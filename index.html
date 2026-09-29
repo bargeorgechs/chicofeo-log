@@ -349,7 +349,7 @@
         <div class="toast" id="toast"></div>
       </div>
       <p class="status-line" id="statusLine"></p>
-      <p class="status-line">App version 3 (tips hidden, department picker)</p>
+      <p class="status-line">App version 4 (clearer connection errors)</p>
     </div>
   </div>
 
@@ -548,9 +548,23 @@
 
   // ---- networking ----
   async function apiGet(){
-    const res = await fetch(SHEET_URL + '?pin=' + encodeURIComponent(APP_PIN) + '&t=' + Date.now(), { method:'GET', cache:'no-store' });
-    const data = await res.json();
-    if(!data.ok) throw new Error(data.error || 'Sheet returned an error');
+    let res;
+    try{
+      res = await fetch(SHEET_URL + '?pin=' + encodeURIComponent(APP_PIN) + '&t=' + Date.now(), { method:'GET', cache:'no-store' });
+    }catch(e){
+      throw new Error("The request was blocked or couldn't connect. Usually this means the web app isn't deployed with access set to \"Anyone\", or SHEET_URL isn't the /exec link.");
+    }
+    let data;
+    try{ data = await res.json(); }
+    catch(e){
+      throw new Error("The sheet link answered, but not with app data (often a Google sign-in page). Check that the deployment's access is \"Anyone\" and SHEET_URL ends in /exec.");
+    }
+    if(!data.ok){
+      if(String(data.error).indexOf('PIN mismatch') !== -1){
+        throw new Error('APP_PIN in this file doesn\'t match APP_PIN in the Apps Script.');
+      }
+      throw new Error('The sheet reported an error: ' + (data.error || 'unknown'));
+    }
     return data;
   }
   async function apiPost(payload){
@@ -582,7 +596,7 @@
       setConnected(true);
       renderAll();
     }catch(err){
-      setConnected(false);
+      setConnected(false, "Can't reach the shared sheet. " + err.message);
       if(showToastOnFail) showToast("Couldn't reach the sheet. The last loaded data is still shown.", 'var(--rust)');
     }
   }
