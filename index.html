@@ -335,7 +335,7 @@
 
         <div id="onShiftBox" style="display:none;">
           <div class="elapsed" id="elapsed">0h 00m</div>
-          <div class="tips-field">
+          <div class="tips-field" id="tipsField">
             <label for="tipsInput">Tips this shift</label>
             <div class="hint">Leave blank if you have no tips.</div>
             <div class="tips-input-wrap">
@@ -349,7 +349,7 @@
         <div class="toast" id="toast"></div>
       </div>
       <p class="status-line" id="statusLine"></p>
-      <p class="status-line">App version 5 (light blue name menu)</p>
+      <p class="status-line">App version 6 (tips only for Manager/Bartender)</p>
     </div>
   </div>
 
@@ -440,6 +440,10 @@
   const APP_PIN = "0672";
   // Optional: shown at the top of the screen, e.g. "Time Clock — Bar George".
   const TITLE = "Time Clock";
+  // Only shifts clocked in under these departments are asked for tips at
+  // clock-out. Spell them the way they appear in the Employees tab
+  // (capital letters don't matter). Add more names to the list if needed.
+  const TIPPED_DEPARTMENTS = ["Manager", "Bartender"];
   // The MANAGER_PIN is NOT stored here on purpose — it only lives in the
   // Apps Script, and a manager types it in when needed.
   // ======================================================================
@@ -516,6 +520,11 @@
     return (emp && emp.department) || '';
   }
   function shiftDeptOf(entry){ return entry.department || homeDeptOf(entry.employee) || ''; }
+
+  function isTippedDept(dept){
+    const d = String(dept || '').trim().toLowerCase();
+    return TIPPED_DEPARTMENTS.some(t => t.trim().toLowerCase() === d);
+  }
 
   function openShiftFor(name){
     const open = entries.filter(e => e.employee === name && e.clockIn && !e.clockOut);
@@ -724,6 +733,7 @@
       ticketSub.textContent = dep ? `On shift in ${dep} since ${fmtDayTime(start)}.` : `On shift since ${fmtDayTime(start)}.`;
       elapsedEl.textContent = fmtElapsed(Date.now() - start.getTime());
       onShiftBox.style.display = '';
+      $('tipsField').style.display = isTippedDept(dep) ? '' : 'none';
       deptPick.style.display = 'none';
       punchBtn.className = 'punch-btn out';
       punchBtn.textContent = 'Clock out';
@@ -876,7 +886,8 @@
     let payload, tips = 0;
 
     if(shift){
-      tips = parseMoney(tipsInput.value);
+      const tipped = isTippedDept(shiftDeptOf(shift));
+      tips = tipped ? parseMoney(tipsInput.value) : 0;
       const start = new Date(shift.clockIn);
       const hrs = (Date.now() - start.getTime()) / 3600000;
       if(hrs > LONG_SHIFT_HOURS){
@@ -907,7 +918,8 @@
     setTimeout(() => punchBtn.classList.remove('pulse-success'), 350);
     const at = fmtTime(new Date());
     if(shift){
-      showToast(`Clocked out: ${name} at ${at} — ${Number(result.hours || 0).toFixed(2)}h. Tips saved.`, 'var(--teal)', 6000);
+      const tipNote = isTippedDept(shiftDeptOf(shift)) ? ' Tips saved.' : '';
+      showToast(`Clocked out: ${name} at ${at} — ${Number(result.hours || 0).toFixed(2)}h.${tipNote}`, 'var(--teal)', 6000);
     }else{
       const dep = payload.department ? ` in ${payload.department}` : '';
       showToast(`Clocked in: ${name}${dep} at ${at}.`, 'var(--teal)', 6000);
@@ -933,6 +945,17 @@
       depts.map(d => `<option value="${escapeHtml(d)}">${escapeHtml(d)}</option>`).join('');
     shiftDept.value = value || '';
   }
+  // In "Add missed shift", only show the tips box for tipped departments.
+  function updateMissedShiftTips(){
+    if(editingId) return;
+    const dept = shiftDept.value || homeDeptOf(shiftEmp.value);
+    const show = isTippedDept(dept);
+    shiftTipsField.style.display = show ? '' : 'none';
+    if(!show) shiftTips.value = '';
+  }
+  shiftDept.addEventListener('change', updateMissedShiftTips);
+  shiftEmp.addEventListener('change', updateMissedShiftTips);
+
   function openShiftEditor(entry){
     shiftErr.textContent = '';
     fillDeptSelect(entry ? shiftDeptOf(entry) : '');
@@ -953,7 +976,7 @@
         employees.slice().sort((a,b)=>a.name.localeCompare(b.name))
           .map(e => `<option value="${escapeHtml(e.name)}">${escapeHtml(e.name)}</option>`).join('');
       shiftIn.value = ''; shiftOut.value = ''; shiftTips.value = '';
-      shiftTipsField.style.display = '';
+      updateMissedShiftTips();
     }
     shiftModal.classList.add('open');
   }
