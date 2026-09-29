@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="mobile-web-app-capable" content="yes">
-<title>Chico Feo</title>
+<title>Time Clock</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600;700&display=swap" rel="stylesheet">
 <style>
@@ -156,6 +156,16 @@
   }
   .tips-input-wrap input:focus{ outline:none; }
   .tips-input-wrap:focus-within{ border-bottom-color:var(--mustard); }
+
+  .dept-pick{ margin-bottom:20px; }
+  .dept-pick .hint{ font-size:13px; font-weight:600; color:var(--ink-soft); margin-bottom:8px; }
+  .dept-options{ display:flex; flex-wrap:wrap; gap:8px; }
+  .dept-opt{
+    font-family:inherit; font-size:16px; font-weight:600; padding:12px 18px; min-height:48px;
+    border-radius:10px; border:1.5px solid var(--ink); background:#fff; color:var(--ink); cursor:pointer;
+  }
+  .dept-opt.selected{ background:var(--ink); color:var(--paper); }
+  .dept-opt:active{ transform:translateY(1px); }
 
   .punch-btn{
     width:100%; border:none; border-radius:12px; padding:20px; font-size:20px; font-weight:700;
@@ -318,6 +328,11 @@
         <p class="ticket-name placeholder" id="ticketName">No one selected</p>
         <p class="ticket-sub" id="ticketSub">Choose your name to clock in or out.</p>
 
+        <div class="dept-pick" id="deptPick" style="display:none;">
+          <div class="hint">Working in</div>
+          <div class="dept-options" id="deptOptions"></div>
+        </div>
+
         <div id="onShiftBox" style="display:none;">
           <div class="elapsed" id="elapsed">0h 00m</div>
           <div class="tips-field">
@@ -359,7 +374,7 @@
       <button class="btn secondary" id="nextWeekBtn" type="button">Next &rarr;</button>
     </div>
     <div id="reportWrap"></div>
-    <p class="report-note">Shifts count on the day they were clocked in. People still on shift aren't counted until they clock out. Shifts older than about 30 days are in the Sheet's Archive tab and may not appear here.</p>
+    <p class="report-note">Tips are only shown in the Google Sheet. Someone who worked in two departments this week shows up on a row in each; the per-person table adds them together. Shifts count on the day they were clocked in. People still on shift aren't counted until they clock out. Shifts older than about 30 days are in the Sheet's Archive tab and may not appear here.</p>
   </div>
 
 </div>
@@ -390,6 +405,10 @@
       <select id="shiftEmp"></select>
     </div>
     <div class="field">
+      <label for="shiftDept">Department for this shift</label>
+      <select id="shiftDept"></select>
+    </div>
+    <div class="field">
       <label for="shiftIn">Clock in</label>
       <input id="shiftIn" type="datetime-local" />
     </div>
@@ -397,7 +416,7 @@
       <label for="shiftOut">Clock out (leave blank if still on shift)</label>
       <input id="shiftOut" type="datetime-local" />
     </div>
-    <div class="field">
+    <div class="field" id="shiftTipsField">
       <label for="shiftTips">Tips ($)</label>
       <input id="shiftTips" inputmode="decimal" placeholder="0.00" />
     </div>
@@ -417,8 +436,8 @@
   // ======================================================================
   const SHEET_URL = "https://script.google.com/macros/s/AKfycbxr3_YroaR0bPDzUBWjaZ2Im1GL2dtaAIyb7cewjm-0Eoa95RdLGULs5jaPbmS8lL_1CQ/exec";
   // This must exactly match APP_PIN in your Apps Script code.
-  const APP_PIN = "0672";
-  // Optional: shown at the top of the screen, e.g. "Time Clock — Chico Feo".
+  const APP_PIN = "CHANGE-ME-5678";
+  // Optional: shown at the top of the screen, e.g. "Time Clock — Bar George".
   const TITLE = "Time Clock";
   // The MANAGER_PIN is NOT stored here on purpose — it only lives in the
   // Apps Script, and a manager types it in when needed.
@@ -431,6 +450,7 @@
   let employees = [];
   let entries = [];
   let selectedEmployee = '';
+  let selectedDept = '';
   let connected = false;
   let pollTimer = null;
   let isSubmitting = false;
@@ -446,6 +466,7 @@
   const newEmpInput = $('newEmpInput'), newDeptInput = $('newDeptInput'), deptList = $('deptList');
   const addEmpBtn = $('addEmpBtn'), empChips = $('empChips');
   const ticketName = $('ticketName'), ticketSub = $('ticketSub');
+  const deptPick = $('deptPick'), deptOptions = $('deptOptions');
   const onShiftBox = $('onShiftBox'), elapsedEl = $('elapsed'), tipsInput = $('tipsInput');
   const punchBtn = $('punchBtn'), toast = $('toast'), statusLine = $('statusLine');
   const logWrap = $('logWrap'), logTotals = $('logTotals'), addShiftBtn = $('addShiftBtn');
@@ -483,6 +504,17 @@
     toast.textContent = msg;
     if(clearAfter) setTimeout(() => { if(toast.textContent === msg) toast.textContent = ''; }, clearAfter);
   }
+
+  function allDepartments(){
+    const out = [];
+    employees.forEach(e => { if(e.department && !out.includes(e.department)) out.push(e.department); });
+    return out;
+  }
+  function homeDeptOf(name){
+    const emp = employees.find(e => e.name === name);
+    return (emp && emp.department) || '';
+  }
+  function shiftDeptOf(entry){ return entry.department || homeDeptOf(entry.employee) || ''; }
 
   function openShiftFor(name){
     const open = entries.filter(e => e.employee === name && e.clockIn && !e.clockOut);
@@ -650,7 +682,7 @@
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.className = 'onshift-btn' + (selectedEmployee === e.employee ? ' selected' : '');
-      btn.innerHTML = `<span>${escapeHtml(e.employee)}</span><span class="onshift-since">since ${escapeHtml(fmtDayTime(new Date(e.clockIn)))}</span>`;
+      btn.innerHTML = `<span>${escapeHtml(e.employee)}</span><span class="onshift-since">${escapeHtml(shiftDeptOf(e) ? shiftDeptOf(e) + ', ' : '')}since ${escapeHtml(fmtDayTime(new Date(e.clockIn)))}</span>`;
       btn.addEventListener('click', () => selectEmployee(e.employee));
       onShiftList.appendChild(btn);
     });
@@ -662,6 +694,7 @@
       ticketName.classList.add('placeholder');
       ticketSub.textContent = 'Choose your name to clock in or out.';
       onShiftBox.style.display = 'none';
+      deptPick.style.display = 'none';
       punchBtn.className = 'punch-btn in';
       punchBtn.textContent = 'Clock in';
       punchBtn.disabled = true;
@@ -672,18 +705,39 @@
     const shift = openShiftFor(selectedEmployee);
     if(shift){
       const start = new Date(shift.clockIn);
-      ticketSub.textContent = `On shift since ${fmtDayTime(start)}.`;
+      const dep = shiftDeptOf(shift);
+      ticketSub.textContent = dep ? `On shift in ${dep} since ${fmtDayTime(start)}.` : `On shift since ${fmtDayTime(start)}.`;
       elapsedEl.textContent = fmtElapsed(Date.now() - start.getTime());
       onShiftBox.style.display = '';
+      deptPick.style.display = 'none';
       punchBtn.className = 'punch-btn out';
       punchBtn.textContent = 'Clock out';
     }else{
       ticketSub.textContent = 'Not clocked in.';
       onShiftBox.style.display = 'none';
+      renderDeptPick();
       punchBtn.className = 'punch-btn in';
       punchBtn.textContent = 'Clock in';
     }
     punchBtn.disabled = !connected || isSubmitting;
+  }
+
+  // Department buttons shown before clocking in. Home department is picked
+  // by default; tapping another one clocks this shift in under it instead.
+  function renderDeptPick(){
+    const depts = allDepartments();
+    if(depts.length < 2){ deptPick.style.display = 'none'; return; }
+    if(!selectedDept || !depts.includes(selectedDept)) selectedDept = homeDeptOf(selectedEmployee) || depts[0];
+    deptOptions.innerHTML = '';
+    depts.forEach(d => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'dept-opt' + (d === selectedDept ? ' selected' : '');
+      b.textContent = d;
+      b.addEventListener('click', () => { selectedDept = d; bumpIdle(); renderDeptPick(); });
+      deptOptions.appendChild(b);
+    });
+    deptPick.style.display = '';
   }
 
   function renderChips(){
@@ -729,10 +783,10 @@
       return `<tr>
         <td>${escapeHtml(e.date)}</td>
         <td>${escapeHtml(e.employee)}</td>
+        <td>${escapeHtml(shiftDeptOf(e))}</td>
         <td>${inD ? escapeHtml(fmtTime(inD)) : ''}</td>
         <td>${outD ? escapeHtml(fmtDayTime(outD)) : '<span class="open-tag">On shift</span>'}</td>
         <td class="num">${outD ? e.hours.toFixed(2) : ''}</td>
-        <td class="num">${outD ? money(e.tips) : ''}</td>
         <td>
           <button class="row-btn edit" data-id="${escapeHtml(e.id)}" type="button" ${connected ? '' : 'disabled'}>Edit</button>
           <button class="row-btn del" data-id="${escapeHtml(e.id)}" type="button" ${connected ? '' : 'disabled'}>Remove</button>
@@ -740,9 +794,9 @@
       </tr>`;
     }).join('');
     logWrap.innerHTML = `<div class="table-wrap"><table><thead><tr>
-        <th>Date</th><th>Employee</th><th>In</th><th>Out</th><th class="num">Hours</th><th class="num">Tips</th><th></th>
+        <th>Date</th><th>Employee</th><th>Department</th><th>In</th><th>Out</th><th class="num">Hours</th><th></th>
       </tr></thead><tbody>${rows}</tbody></table></div>`;
-    logTotals.textContent = `Showing the latest ${visible.length} of ${entries.length} shifts. Editing or removing a shift needs the manager PIN.`;
+    logTotals.textContent = `Showing the latest ${visible.length} of ${entries.length} shifts. Tips are only visible in the Google Sheet.`;
 
     logWrap.querySelectorAll('.row-btn.edit').forEach(btn => {
       btn.addEventListener('click', async () => {
@@ -776,6 +830,7 @@
   }
   function selectEmployee(name){
     selectedEmployee = name || '';
+    selectedDept = homeDeptOf(selectedEmployee);
     empSelect.value = selectedEmployee;
     tipsInput.value = '';
     toast.textContent = '';
@@ -785,6 +840,7 @@
   }
   function clearSelection(){
     selectedEmployee = '';
+    selectedDept = '';
     empSelect.value = '';
     tipsInput.value = '';
     renderOnShift();
@@ -817,7 +873,7 @@
       }
       payload = { action:'clockOut', employee:name, tips };
     }else{
-      payload = { action:'clockIn', employee:name };
+      payload = { action:'clockIn', employee:name, department: selectedDept || homeDeptOf(name) };
     }
 
     isSubmitting = true;
@@ -836,9 +892,10 @@
     setTimeout(() => punchBtn.classList.remove('pulse-success'), 350);
     const at = fmtTime(new Date());
     if(shift){
-      showToast(`Clocked out: ${name} at ${at} — ${Number(result.hours || 0).toFixed(2)}h, ${money(result.tips)} tips.`, 'var(--teal)', 6000);
+      showToast(`Clocked out: ${name} at ${at} — ${Number(result.hours || 0).toFixed(2)}h. Tips saved.`, 'var(--teal)', 6000);
     }else{
-      showToast(`Clocked in: ${name} at ${at}.`, 'var(--teal)', 6000);
+      const dep = payload.department ? ` in ${payload.department}` : '';
+      showToast(`Clocked in: ${name}${dep} at ${at}.`, 'var(--teal)', 6000);
     }
     isSubmitting = false;
     clearSelection();
@@ -849,12 +906,21 @@
   // ---- shift editor (manager) ----
   const shiftModal = $('shiftModal'), shiftTitle = $('shiftTitle'), shiftSub = $('shiftSub');
   const shiftEmpField = $('shiftEmpField'), shiftEmp = $('shiftEmp');
+  const shiftDept = $('shiftDept'), shiftTipsField = $('shiftTipsField');
   const shiftIn = $('shiftIn'), shiftOut = $('shiftOut'), shiftTips = $('shiftTips');
   const shiftErr = $('shiftErr'), shiftSave = $('shiftSave');
   let editingId = null;
 
+  function fillDeptSelect(value){
+    const depts = allDepartments();
+    if(value && !depts.includes(value)) depts.push(value);
+    shiftDept.innerHTML = '<option value="">(Home department)</option>' +
+      depts.map(d => `<option value="${escapeHtml(d)}">${escapeHtml(d)}</option>`).join('');
+    shiftDept.value = value || '';
+  }
   function openShiftEditor(entry){
     shiftErr.textContent = '';
+    fillDeptSelect(entry ? shiftDeptOf(entry) : '');
     if(entry){
       editingId = entry.id;
       shiftTitle.textContent = 'Edit shift';
@@ -862,7 +928,7 @@
       shiftEmpField.style.display = 'none';
       shiftIn.value = entry.clockIn ? toLocalInput(new Date(entry.clockIn)) : '';
       shiftOut.value = entry.clockOut ? toLocalInput(new Date(entry.clockOut)) : '';
-      shiftTips.value = entry.clockOut ? Number(entry.tips || 0).toFixed(2) : '';
+      shiftTipsField.style.display = 'none'; // tips are corrected in the Sheet
     }else{
       editingId = null;
       shiftTitle.textContent = 'Add missed shift';
@@ -872,6 +938,7 @@
         employees.slice().sort((a,b)=>a.name.localeCompare(b.name))
           .map(e => `<option value="${escapeHtml(e.name)}">${escapeHtml(e.name)}</option>`).join('');
       shiftIn.value = ''; shiftOut.value = ''; shiftTips.value = '';
+      shiftTipsField.style.display = '';
     }
     shiftModal.classList.add('open');
   }
@@ -887,8 +954,8 @@
       if(!confirm('That shift is over 16 hours. Save it anyway?')) return;
     }
     const payload = editingId
-      ? { action:'editEntry', id: editingId, clockIn: inVal, clockOut: outVal, tips: parseMoney(shiftTips.value) }
-      : { action:'addShift', employee: shiftEmp.value, clockIn: inVal, clockOut: outVal, tips: parseMoney(shiftTips.value) };
+      ? { action:'editEntry', id: editingId, department: shiftDept.value, clockIn: inVal, clockOut: outVal }
+      : { action:'addShift', employee: shiftEmp.value, department: shiftDept.value, clockIn: inVal, clockOut: outVal, tips: parseMoney(shiftTips.value) };
     shiftSave.disabled = true;
     try{
       const r = await managerPost(payload);
@@ -937,16 +1004,15 @@
   // ---- CSV ----
   function csvField(v){ v = String(v); return /[",\n]/.test(v) ? `"${v.replace(/"/g,'""')}"` : v; }
   function buildCsv(){
-    const lines = [['Date','Employee','Clock In','Clock Out','Hours','Tips'].join(',')];
+    const lines = [['Date','Employee','Department','Clock In','Clock Out','Hours'].join(',')];
     entries.slice().sort((a,b) => (a.clockIn||a.date).localeCompare(b.clockIn||b.date)).forEach(e => {
       const inD = e.clockIn ? new Date(e.clockIn) : null;
       const outD = e.clockOut ? new Date(e.clockOut) : null;
       lines.push([
-        e.date, csvField(e.employee),
+        e.date, csvField(e.employee), csvField(shiftDeptOf(e)),
         inD ? `${fmtDate(inD)} ${pad(inD.getHours())}:${pad(inD.getMinutes())}` : '',
         outD ? `${fmtDate(outD)} ${pad(outD.getHours())}:${pad(outD.getMinutes())}` : '',
-        outD ? e.hours.toFixed(2) : '',
-        outD ? Number(e.tips || 0).toFixed(2) : ''
+        outD ? e.hours.toFixed(2) : ''
       ].join(','));
     });
     return lines.join('\r\n');
@@ -1003,44 +1069,44 @@
       return;
     }
 
-    const deptByName = {};
-    employees.forEach(emp => { deptByName[emp.name] = emp.department || 'Unassigned'; });
-    const hoursBy = {}, tipsBy = {};
-    function ensure(name){
-      if(hoursBy[name]) return;
-      hoursBy[name] = {}; tipsBy[name] = {};
-      dayKeys.forEach(k => { hoursBy[name][k] = 0; tipsBy[name][k] = 0; });
-      if(!deptByName[name]) deptByName[name] = 'Unassigned';
+    // One row per (department, employee): everyone in their home department,
+    // plus an extra row for any department they picked up a shift in.
+    const rowList = [], rowByKey = {};
+    function rowFor(dept, name){
+      const key = dept + '\u0001' + name;
+      if(!rowByKey[key]){
+        const r = { dept, name, hours:{} };
+        dayKeys.forEach(k => { r.hours[k] = 0; });
+        rowByKey[key] = r; rowList.push(r);
+      }
+      return rowByKey[key];
     }
-    employees.forEach(emp => ensure(emp.name));
+    employees.forEach(emp => rowFor(emp.department || 'Unassigned', emp.name));
     entries.forEach(e => {
       if(!e.clockOut || !dayKeys.includes(e.date)) return;
-      ensure(e.employee);
-      hoursBy[e.employee][e.date] += e.hours;
-      tipsBy[e.employee][e.date] += e.tips;
+      const r = rowFor(shiftDeptOf(e) || 'Unassigned', e.employee);
+      r.hours[e.date] += e.hours;
     });
-
-    const allNames = Object.keys(hoursBy);
     const deptOrder = [];
-    allNames.forEach(n => { if(!deptOrder.includes(deptByName[n])) deptOrder.push(deptByName[n]); });
+    rowList.forEach(r => { if(!deptOrder.includes(r.dept)) deptOrder.push(r.dept); });
 
     const headCells = days.map(d => `<th>${d.toLocaleDateString(undefined,{weekday:'short'})}<br>${fmtShort(d)}</th>`).join('');
 
-    function table(source, fmt, totalLabel){
+    function table(field, fmt, totalLabel){
       const dayTotals = dayKeys.map(() => 0);
       let grand = 0, body = '';
       deptOrder.forEach(dep => {
-        allNames.filter(n => deptByName[n] === dep).forEach((name, idx) => {
+        rowList.filter(r => r.dept === dep).forEach((r, idx) => {
           let sum = 0;
           const cells = dayKeys.map((k, i) => {
-            const v = source[name][k];
+            const v = r[field][k];
             sum += v; dayTotals[i] += v;
             return `<td>${v ? fmt(v) : ''}</td>`;
           }).join('');
           grand += sum;
           body += `<tr>
             <td class="dept-col">${idx === 0 ? escapeHtml(dep) : ''}</td>
-            <td class="emp-col">${escapeHtml(name)}</td>${cells}
+            <td class="emp-col">${escapeHtml(r.name)}</td>${cells}
             <td class="total-col">${fmt(sum)}</td>
           </tr>`;
         });
@@ -1055,9 +1121,24 @@
         <tbody>${body}</tbody></table></div>`;
     }
 
+    function personTable(){
+      const order = [], totals = {};
+      rowList.forEach(r => {
+        if(!totals[r.name]){ totals[r.name] = { hours:0 }; order.push(r.name); }
+        dayKeys.forEach(k => { totals[r.name].hours += r.hours[k]; });
+      });
+      const body = order.map(n => `<tr>
+        <td class="emp-col">${escapeHtml(n)}</td>
+        <td class="total-col">${totals[n].hours.toFixed(2)}</td>
+      </tr>`).join('');
+      return `<div class="table-wrap"><table class="report-table" style="min-width:0;max-width:380px;">
+        <thead><tr><th class="emp-col">Employee</th><th class="total-col">Total hours</th></tr></thead>
+        <tbody>${body}</tbody></table></div>`;
+    }
+
     reportWrap.innerHTML =
-      '<h3 class="report-section-title">Hours</h3>' + table(hoursBy, v => v.toFixed(2), 'Total hours') +
-      '<h3 class="report-section-title">Tips</h3>' + table(tipsBy, v => money(v), 'Total tips');
+      '<h3 class="report-section-title">Hours</h3>' + table('hours', v => v.toFixed(2), 'Total hours') +
+      '<h3 class="report-section-title">Per person, all departments</h3>' + personTable();
   }
 
   loadData(false);
