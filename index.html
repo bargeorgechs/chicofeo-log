@@ -1,0 +1,1072 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="mobile-web-app-capable" content="yes">
+<title>Time Clock</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper:#EFEEE6;
+    --paper-dim:#E6E4D8;
+    --ink:#22261F;
+    --ink-soft:#5B5F53;
+    --line: rgba(34,38,31,0.14);
+    --mustard:#D9A227;
+    --mustard-ink:#3A2A05;
+    --teal:#1F6B67;
+    --rust:#B3452E;
+    --radius: 14px;
+  }
+  *{ box-sizing:border-box; }
+  button, input, select, a{ touch-action: manipulation; }
+  html,body{ margin:0; padding:0; }
+  body{
+    background:var(--paper);
+    color:var(--ink);
+    font-family:'IBM Plex Sans', system-ui, sans-serif;
+    -webkit-font-smoothing:antialiased;
+    min-height:100vh;
+    padding-top:env(safe-area-inset-top, 0px);
+    padding-bottom:env(safe-area-inset-bottom, 0px);
+  }
+  .app{ max-width:1100px; margin:0 auto; padding:20px 20px 48px; }
+
+  .setup-banner{
+    background:#fff3cd; border:1.5px solid #d9a227; border-radius:10px;
+    padding:16px 18px; margin-bottom:18px; font-size:14px; line-height:1.5;
+    display:none;
+  }
+  .setup-banner.show{ display:block; }
+  .setup-banner code{ background:#00000010; padding:2px 6px; border-radius:4px; }
+
+  .conn-banner{
+    background:var(--rust); color:#fff; border-radius:10px;
+    padding:12px 16px; margin-bottom:18px; font-size:14px; font-weight:600;
+    display:none; align-items:center; justify-content:space-between; gap:12px;
+  }
+  .conn-banner.show{ display:flex; }
+  .conn-banner button{
+    background:#fff; color:var(--rust); border:none; border-radius:8px;
+    padding:8px 14px; font-family:inherit; font-weight:700; cursor:pointer; flex-shrink:0;
+  }
+
+  header{
+    display:flex; align-items:flex-end; justify-content:space-between;
+    padding-bottom:16px; margin-bottom:20px;
+    border-bottom:2px solid var(--ink);
+    gap:16px; flex-wrap:wrap;
+  }
+  header h1{ font-size:28px; font-weight:700; margin:0; letter-spacing:-0.01em; }
+  header p{ margin:4px 0 0; color:var(--ink-soft); font-size:14px; }
+  .now-clock{
+    font-family:'IBM Plex Mono', monospace; font-weight:600; font-size:40px;
+    line-height:1; letter-spacing:-0.02em; margin-top:6px;
+  }
+  .header-actions{ display:flex; gap:10px; flex-wrap:wrap; }
+  .btn{
+    background:var(--ink); color:var(--paper);
+    border:none; border-radius:10px;
+    padding:14px 20px; font-size:15px; font-weight:600;
+    font-family:inherit; cursor:pointer;
+    display:flex; align-items:center; gap:8px;
+    min-height:48px;
+  }
+  .btn.secondary{ background:#fff; color:var(--ink); border:1.5px solid var(--ink); }
+  .btn:active{ transform:translateY(1px); }
+  .btn:disabled{ opacity:0.4; cursor:not-allowed; }
+
+  .grid{ display:grid; grid-template-columns: 1fr 1.3fr; gap:28px; }
+  @media (max-width: 760px){ .grid{ grid-template-columns: 1fr; } }
+
+  .panel-label{ font-size:13px; font-weight:600; color:var(--ink-soft); margin:0 0 10px; }
+
+  .select-wrap{ position:relative; margin-bottom:22px; }
+  .select-wrap select{
+    width:100%; appearance:none; -webkit-appearance:none;
+    padding:16px 48px 16px 16px; font-size:20px; font-weight:600; font-family:inherit;
+    border:2px solid var(--ink); border-radius:12px; background:#fff; color:var(--ink);
+    min-height:60px;
+  }
+  .select-wrap select:focus{ outline:3px solid var(--mustard); outline-offset:1px; }
+  .select-wrap svg{
+    position:absolute; right:16px; top:50%; transform:translateY(-50%);
+    width:20px; height:20px; pointer-events:none; color:var(--ink);
+  }
+
+  .onshift-list{ display:flex; flex-direction:column; gap:8px; }
+  .onshift-btn{
+    display:flex; justify-content:space-between; align-items:center; gap:10px;
+    text-align:left; font-family:inherit; font-size:17px; font-weight:500;
+    padding:12px 16px; border-radius:10px; border:1.5px solid var(--line);
+    background:#fff; color:var(--ink); cursor:pointer; min-height:52px;
+  }
+  .onshift-btn:active{ transform:translateY(1px); }
+  .onshift-btn.selected{ background:var(--teal); color:#fff; border-color:var(--teal); }
+  .onshift-since{ font-family:'IBM Plex Mono', monospace; font-size:14px; opacity:0.75; white-space:nowrap; }
+  .emp-empty{ color:var(--ink-soft); font-size:14px; padding:10px 4px; }
+
+  .manage-toggle{
+    margin-top:18px; font-size:13px; color:var(--ink-soft);
+    background:none; border:none; text-decoration:underline;
+    font-family:inherit; cursor:pointer; padding:6px 0;
+  }
+  .manage-box{ margin-top:10px; display:none; }
+  .manage-box.open{ display:block; }
+  .manage-row{ display:flex; gap:8px; margin-bottom:10px; }
+  .manage-row input{
+    flex:1; min-width:0; padding:10px 12px; font-size:16px; font-family:inherit;
+    border:1.5px solid var(--line); border-radius:8px;
+  }
+  .manage-row button{
+    background:var(--teal); color:#fff; border:none; border-radius:8px;
+    padding:10px 16px; font-family:inherit; font-weight:600; cursor:pointer;
+  }
+  .manage-row button:disabled{ opacity:0.4; cursor:not-allowed; }
+  .manage-list{ display:flex; flex-wrap:wrap; gap:6px; }
+  .chip{
+    display:flex; align-items:center; gap:6px;
+    background:var(--paper-dim); border-radius:20px; padding:6px 8px 6px 12px;
+    font-size:14px;
+  }
+  .chip button{ background:none; border:none; color:var(--rust); font-size:16px; cursor:pointer; line-height:1; padding:2px 4px; }
+  .chip-dept{ color:var(--ink-soft); font-size:12px; }
+
+  .ticket{ background:#fff; border-radius:var(--radius); border:1.5px solid var(--line); padding:22px; }
+  .ticket-name{ font-size:26px; font-weight:700; margin:0 0 4px; }
+  .ticket-name.placeholder{ color:var(--ink-soft); font-weight:500; font-size:17px; }
+  .ticket-sub{ font-size:15px; color:var(--ink-soft); margin:0 0 18px; }
+  .elapsed{
+    font-family:'IBM Plex Mono', monospace; font-size:34px; font-weight:600;
+    margin:0 0 18px; color:var(--teal);
+  }
+
+  .tips-field{ border:1.5px solid var(--line); border-radius:12px; padding:14px; margin-bottom:20px; }
+  .tips-field label{ display:block; font-size:13px; font-weight:600; color:var(--ink-soft); margin-bottom:2px; }
+  .tips-field .hint{ font-size:12px; color:var(--ink-soft); margin-bottom:10px; }
+  .tips-input-wrap{ display:flex; align-items:center; gap:6px; border-bottom:2px solid var(--ink); padding-bottom:4px; }
+  .tips-input-wrap span{ font-family:'IBM Plex Mono', monospace; font-size:28px; font-weight:600; color:var(--ink-soft); }
+  .tips-input-wrap input{
+    flex:1; min-width:0; border:none; background:transparent; color:var(--ink);
+    font-family:'IBM Plex Mono', monospace; font-size:28px; font-weight:600; padding:4px 0;
+  }
+  .tips-input-wrap input:focus{ outline:none; }
+  .tips-input-wrap:focus-within{ border-bottom-color:var(--mustard); }
+
+  .punch-btn{
+    width:100%; border:none; border-radius:12px; padding:20px; font-size:20px; font-weight:700;
+    font-family:inherit; cursor:pointer; min-height:64px;
+    transition: background-color 0.4s ease, color 0.4s ease;
+  }
+  .punch-btn.in{ background:var(--teal); color:#fff; }
+  .punch-btn.out{ background:var(--mustard); color:var(--mustard-ink); }
+  .punch-btn:disabled{ background:var(--paper-dim); color:var(--ink-soft); cursor:not-allowed; }
+  .punch-btn:not(:disabled):active{ transform:translateY(1px); }
+  .punch-btn.pulse-success{ background-color:var(--ink) !important; color:#fff !important; }
+
+  .toast{ margin-top:12px; font-size:15px; font-weight:600; min-height:18px; }
+  .status-line{ font-size:12px; color:var(--ink-soft); margin-top:6px; }
+
+  .log-section{ margin-top:36px; }
+  .log-head{ display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; flex-wrap:wrap; gap:8px; }
+  .log-head h2{ font-size:18px; font-weight:700; margin:0; }
+  .log-totals{ font-size:13px; color:var(--ink-soft); }
+  .table-wrap{ overflow-x:auto; }
+
+  table{ width:100%; border-collapse:collapse; }
+  thead th{ text-align:left; font-size:12px; font-weight:600; color:var(--ink-soft); padding:8px 10px; border-bottom:2px solid var(--ink); white-space:nowrap; }
+  thead th.num{ text-align:right; }
+  tbody td{ padding:12px 10px; border-bottom:1px solid var(--line); font-size:15px; white-space:nowrap; }
+  tbody td.num{ text-align:right; font-family:'IBM Plex Mono', monospace; font-weight:500; }
+  tbody tr:hover{ background: var(--paper-dim); }
+  .open-tag{ color:var(--teal); font-weight:600; }
+  .row-btn{ background:none; border:none; cursor:pointer; font-size:13px; font-weight:600; padding:6px 8px; font-family:inherit; }
+  .row-btn.edit{ color:var(--ink); text-decoration:underline; }
+  .row-btn.del{ color:var(--rust); }
+  .row-btn:disabled{ opacity:0.3; cursor:not-allowed; }
+  .log-empty{ color:var(--ink-soft); font-size:14px; padding:24px 8px; text-align:center; border:1.5px dashed var(--line); border-radius:12px; }
+
+  .csv-fallback{ margin-top:14px; display:none; }
+  .csv-fallback.open{ display:block; }
+  .csv-fallback textarea{ width:100%; height:140px; font-family:'IBM Plex Mono', monospace; font-size:12px; padding:10px; border:1.5px solid var(--line); border-radius:8px; }
+  .csv-fallback p{ font-size:12px; color:var(--ink-soft); margin:6px 0 0; }
+
+  .tab-nav{ display:flex; gap:8px; margin-bottom:24px; border-bottom:1.5px solid var(--line); }
+  .tab-btn{
+    background:none; border:none; font-family:inherit; font-size:15px; font-weight:600;
+    color:var(--ink-soft); padding:10px 4px; margin-right:20px; cursor:pointer;
+    border-bottom:3px solid transparent; margin-bottom:-1.5px;
+  }
+  .tab-btn.active{ color:var(--ink); border-bottom-color:var(--mustard); }
+
+  .report-nav{ display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:18px; flex-wrap:wrap; }
+  .report-range{ font-size:16px; font-weight:700; }
+  .report-section-title{ font-size:16px; font-weight:700; margin:26px 0 8px; }
+  .report-section-title:first-child{ margin-top:0; }
+  table.report-table{ width:100%; border-collapse:collapse; min-width:760px; }
+  table.report-table th{
+    text-align:center; font-size:12px; font-weight:600; color:var(--ink-soft);
+    padding:8px 6px; border-bottom:2px solid var(--ink); white-space:nowrap;
+  }
+  table.report-table th.emp-col, table.report-table th.dept-col{ text-align:left; }
+  table.report-table td.dept-col{
+    text-align:left; font-family:'IBM Plex Sans', sans-serif; font-weight:700; font-size:13px;
+    color:var(--ink-soft); white-space:nowrap;
+  }
+  table.report-table th.total-col{ border-left:1.5px solid var(--line); }
+  table.report-table td{
+    text-align:center; padding:8px 6px; border-bottom:1px solid var(--line); font-size:13px;
+    font-family:'IBM Plex Mono', monospace; vertical-align:middle;
+  }
+  table.report-table td.emp-col{
+    text-align:left; font-family:'IBM Plex Sans', sans-serif; font-weight:600; font-size:14px; white-space:nowrap;
+  }
+  table.report-table td.total-col{ border-left:1.5px solid var(--line); font-weight:600; }
+  tr.report-total-row td{ border-top:2px solid var(--ink); border-bottom:none; font-weight:700; }
+  .report-empty{ color:var(--ink-soft); font-size:14px; padding:24px 8px; text-align:center; border:1.5px dashed var(--line); border-radius:12px; }
+  .report-note{ font-size:12px; color:var(--ink-soft); margin-top:14px; }
+
+  /* modal */
+  .modal-back{
+    position:fixed; inset:0; background:rgba(34,38,31,0.45);
+    display:none; align-items:center; justify-content:center; padding:20px; z-index:50;
+  }
+  .modal-back.open{ display:flex; }
+  .modal{
+    background:var(--paper); border-radius:var(--radius); padding:24px; width:100%; max-width:440px;
+    border:2px solid var(--ink); max-height:90vh; overflow-y:auto;
+  }
+  .modal h3{ margin:0 0 4px; font-size:20px; }
+  .modal .modal-sub{ margin:0 0 18px; font-size:14px; color:var(--ink-soft); }
+  .modal .field{ margin-bottom:14px; }
+  .modal .field label{ display:block; font-size:13px; font-weight:600; color:var(--ink-soft); margin-bottom:6px; }
+  .modal .field input, .modal .field select{
+    width:100%; padding:12px 14px; font-size:17px; font-family:inherit;
+    border:1.5px solid var(--line); border-radius:10px; background:#fff; color:var(--ink);
+  }
+  .modal .field input:focus, .modal .field select:focus{ outline:3px solid var(--mustard); outline-offset:1px; }
+  .modal-actions{ display:flex; gap:10px; justify-content:flex-end; margin-top:18px; }
+  .modal-err{ color:var(--rust); font-size:14px; font-weight:600; min-height:18px; margin-top:4px; }
+  .pin-input{ font-family:'IBM Plex Mono', monospace !important; font-size:24px !important; letter-spacing:0.3em; text-align:center; }
+
+  @media (prefers-reduced-motion: reduce){ *{ transition:none !important; } }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <div class="setup-banner" id="setupBanner">
+    <strong>One-time setup needed.</strong> This file isn't connected to a Google Sheet yet.
+    Open this file in a text editor, find <code>SHEET_URL = ""</code> near the top of the
+    <code>&lt;script&gt;</code> section, and paste in the web app URL from your Apps Script deployment.
+    The setup steps are at the top of <code>apps-script-code-time-clock.txt</code>.
+  </div>
+
+  <div class="conn-banner" id="connBanner">
+    <span id="connMsg">Can't reach the shared sheet — check your internet connection.</span>
+    <button id="retryBtn" type="button">Retry</button>
+  </div>
+
+  <header>
+    <div>
+      <h1 id="appTitle">Time Clock</h1>
+      <div class="now-clock" id="nowClock">--:--</div>
+      <p id="nowDate"></p>
+    </div>
+    <div class="header-actions">
+      <button class="btn secondary" id="refreshBtn" type="button">Refresh</button>
+      <button class="btn" id="exportBtn" type="button">Export CSV</button>
+    </div>
+  </header>
+
+  <div class="tab-nav">
+    <button class="tab-btn active" id="tabEntry" type="button">Clock in / out</button>
+    <button class="tab-btn" id="tabReport" type="button">Pay period</button>
+  </div>
+
+  <div id="mainView">
+  <div class="grid">
+    <div>
+      <p class="panel-label">Your name</p>
+      <div class="select-wrap">
+        <select id="empSelect" aria-label="Your name"></select>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>
+      </div>
+
+      <p class="panel-label">On shift now</p>
+      <div class="onshift-list" id="onShiftList"></div>
+
+      <button class="manage-toggle" id="manageToggle" type="button">+ Manage team list (manager)</button>
+      <div class="manage-box" id="manageBox">
+        <div class="manage-row">
+          <input id="newEmpInput" type="text" placeholder="Employee name" />
+          <input id="newDeptInput" type="text" placeholder="Department" list="deptList" />
+          <button id="addEmpBtn" type="button">Add</button>
+        </div>
+        <datalist id="deptList"></datalist>
+        <div class="manage-list" id="empChips"></div>
+      </div>
+    </div>
+
+    <div>
+      <p class="panel-label">Punch card</p>
+      <div class="ticket">
+        <p class="ticket-name placeholder" id="ticketName">No one selected</p>
+        <p class="ticket-sub" id="ticketSub">Choose your name to clock in or out.</p>
+
+        <div id="onShiftBox" style="display:none;">
+          <div class="elapsed" id="elapsed">0h 00m</div>
+          <div class="tips-field">
+            <label for="tipsInput">Tips this shift</label>
+            <div class="hint">Leave blank if you have no tips.</div>
+            <div class="tips-input-wrap">
+              <span>$</span>
+              <input id="tipsInput" inputmode="decimal" placeholder="0.00" autocomplete="off" />
+            </div>
+          </div>
+        </div>
+
+        <button class="punch-btn in" id="punchBtn" type="button" disabled>Clock in</button>
+        <div class="toast" id="toast"></div>
+      </div>
+      <p class="status-line" id="statusLine"></p>
+    </div>
+  </div>
+
+  <div class="log-section">
+    <div class="log-head">
+      <h2>Recent shifts</h2>
+      <button class="btn secondary" id="addShiftBtn" type="button">Add missed shift</button>
+    </div>
+    <p class="log-totals" id="logTotals"></p>
+    <div id="logWrap"></div>
+    <div class="csv-fallback" id="csvFallback">
+      <p class="panel-label" style="margin-bottom:6px;">Download didn't start? Copy this instead:</p>
+      <textarea id="csvText" readonly></textarea>
+      <p>Tap in the box, select all, and copy &mdash; then paste into Notes, Sheets, or Excel.</p>
+    </div>
+  </div>
+  </div>
+
+  <div id="reportView" style="display:none;">
+    <div class="report-nav">
+      <button class="btn secondary" id="prevWeekBtn" type="button">&larr; Previous</button>
+      <span class="report-range" id="reportRange"></span>
+      <button class="btn secondary" id="nextWeekBtn" type="button">Next &rarr;</button>
+    </div>
+    <div id="reportWrap"></div>
+    <p class="report-note">Shifts count on the day they were clocked in. People still on shift aren't counted until they clock out. Shifts older than about 30 days are in the Sheet's Archive tab and may not appear here.</p>
+  </div>
+
+</div>
+
+<!-- Manager PIN modal -->
+<div class="modal-back" id="pinModal">
+  <div class="modal" role="dialog" aria-labelledby="pinTitle">
+    <h3 id="pinTitle">Manager PIN</h3>
+    <p class="modal-sub">Enter the manager PIN to continue.</p>
+    <div class="field">
+      <input id="pinInput" class="pin-input" type="password" inputmode="numeric" autocomplete="off" aria-label="Manager PIN" />
+    </div>
+    <div class="modal-err" id="pinErr"></div>
+    <div class="modal-actions">
+      <button class="btn secondary" id="pinCancel" type="button">Cancel</button>
+      <button class="btn" id="pinOk" type="button">Continue</button>
+    </div>
+  </div>
+</div>
+
+<!-- Shift editor modal -->
+<div class="modal-back" id="shiftModal">
+  <div class="modal" role="dialog" aria-labelledby="shiftTitle">
+    <h3 id="shiftTitle">Edit shift</h3>
+    <p class="modal-sub" id="shiftSub"></p>
+    <div class="field" id="shiftEmpField">
+      <label for="shiftEmp">Employee</label>
+      <select id="shiftEmp"></select>
+    </div>
+    <div class="field">
+      <label for="shiftIn">Clock in</label>
+      <input id="shiftIn" type="datetime-local" />
+    </div>
+    <div class="field">
+      <label for="shiftOut">Clock out (leave blank if still on shift)</label>
+      <input id="shiftOut" type="datetime-local" />
+    </div>
+    <div class="field">
+      <label for="shiftTips">Tips ($)</label>
+      <input id="shiftTips" inputmode="decimal" placeholder="0.00" />
+    </div>
+    <div class="modal-err" id="shiftErr"></div>
+    <div class="modal-actions">
+      <button class="btn secondary" id="shiftCancel" type="button">Cancel</button>
+      <button class="btn" id="shiftSave" type="button">Save shift</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  // ======================================================================
+  // PASTE YOUR APPS SCRIPT WEB APP URL BETWEEN THE QUOTES BELOW.
+  // See apps-script-code-time-clock.txt for how to get this URL.
+  // ======================================================================
+  const SHEET_URL = "https://script.google.com/macros/s/AKfycbxr3_YroaR0bPDzUBWjaZ2Im1GL2dtaAIyb7cewjm-0Eoa95RdLGULs5jaPbmS8lL_1CQ/exec";
+  // This must exactly match APP_PIN in your Apps Script code.
+  const APP_PIN = "0672";
+  // Optional: shown at the top of the screen, e.g. "Time Clock — Chico Feo".
+  const TITLE = "Time Clock";
+  // The MANAGER_PIN is NOT stored here on purpose — it only lives in the
+  // Apps Script, and a manager types it in when needed.
+  // ======================================================================
+
+  const IDLE_RESET_MS = 60 * 1000;      // clear the selected name after 1 min untouched
+  const MANAGER_UNLOCK_MS = 10 * 60 * 1000; // manager stays unlocked for 10 min
+  const LONG_SHIFT_HOURS = 14;          // warn at clock-out past this
+
+  let employees = [];
+  let entries = [];
+  let selectedEmployee = '';
+  let connected = false;
+  let pollTimer = null;
+  let isSubmitting = false;
+  let managerPin = null;
+  let managerPinExpires = 0;
+
+  const $ = id => document.getElementById(id);
+  const setupBanner = $('setupBanner'), connBanner = $('connBanner'), connMsg = $('connMsg');
+  const retryBtn = $('retryBtn'), refreshBtn = $('refreshBtn'), exportBtn = $('exportBtn');
+  const nowClock = $('nowClock'), nowDate = $('nowDate');
+  const empSelect = $('empSelect'), onShiftList = $('onShiftList');
+  const manageToggle = $('manageToggle'), manageBox = $('manageBox');
+  const newEmpInput = $('newEmpInput'), newDeptInput = $('newDeptInput'), deptList = $('deptList');
+  const addEmpBtn = $('addEmpBtn'), empChips = $('empChips');
+  const ticketName = $('ticketName'), ticketSub = $('ticketSub');
+  const onShiftBox = $('onShiftBox'), elapsedEl = $('elapsed'), tipsInput = $('tipsInput');
+  const punchBtn = $('punchBtn'), toast = $('toast'), statusLine = $('statusLine');
+  const logWrap = $('logWrap'), logTotals = $('logTotals'), addShiftBtn = $('addShiftBtn');
+  const csvFallback = $('csvFallback'), csvText = $('csvText');
+  const tabEntry = $('tabEntry'), tabReport = $('tabReport');
+  const mainView = $('mainView'), reportView = $('reportView');
+  const prevWeekBtn = $('prevWeekBtn'), nextWeekBtn = $('nextWeekBtn');
+  const reportRange = $('reportRange'), reportWrap = $('reportWrap');
+
+  $('appTitle').textContent = TITLE;
+  document.title = TITLE;
+
+  // ---- small utilities ----
+  function pad(n){ return String(n).padStart(2,'0'); }
+  function fmtDate(d){ return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`; }
+  function fmtTime(d){ return d.toLocaleTimeString(undefined, { hour:'numeric', minute:'2-digit' }); }
+  function fmtShort(d){ return d.toLocaleDateString(undefined, { month:'short', day:'numeric' }); }
+  function fmtDayTime(d){
+    const today = fmtDate(new Date()) === fmtDate(d);
+    return today ? fmtTime(d) : d.toLocaleDateString(undefined,{weekday:'short'}) + ' ' + fmtTime(d);
+  }
+  function toLocalInput(d){ return `${fmtDate(d)}T${pad(d.getHours())}:${pad(d.getMinutes())}`; }
+  function fmtElapsed(ms){
+    const mins = Math.max(0, Math.floor(ms / 60000));
+    return `${Math.floor(mins/60)}h ${pad(mins % 60)}m`;
+  }
+  function money(n){ return '$' + (Number(n) || 0).toFixed(2); }
+  function parseMoney(s){
+    const n = parseFloat(String(s || '').replace(/[^0-9.]/g, ''));
+    return isNaN(n) ? 0 : Math.round(n * 100) / 100;
+  }
+  function escapeHtml(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+  function showToast(msg, color, clearAfter){
+    toast.style.color = color || 'var(--ink-soft)';
+    toast.textContent = msg;
+    if(clearAfter) setTimeout(() => { if(toast.textContent === msg) toast.textContent = ''; }, clearAfter);
+  }
+
+  function openShiftFor(name){
+    const open = entries.filter(e => e.employee === name && e.clockIn && !e.clockOut);
+    open.sort((a,b) => b.clockIn.localeCompare(a.clockIn));
+    return open[0] || null;
+  }
+
+  // ---- live clock ----
+  function tickClock(){
+    const d = new Date();
+    nowClock.textContent = fmtTime(d);
+    nowDate.textContent = d.toLocaleDateString(undefined, { weekday:'long', month:'long', day:'numeric' });
+    const shift = selectedEmployee && openShiftFor(selectedEmployee);
+    if(shift) elapsedEl.textContent = fmtElapsed(Date.now() - new Date(shift.clockIn).getTime());
+  }
+  tickClock();
+  setInterval(tickClock, 5000);
+
+  // ---- connection state ----
+  function setConnected(ok, message){
+    connected = ok;
+    connBanner.classList.toggle('show', !ok);
+    if(!ok) connMsg.textContent = message || "Can't reach the shared sheet — check your internet connection.";
+    addEmpBtn.disabled = !ok;
+    addShiftBtn.disabled = !ok;
+    document.querySelectorAll('.row-btn').forEach(b => b.disabled = !ok);
+    statusLine.textContent = ok ? 'Synced with the shared sheet.' : '';
+    renderTicket();
+  }
+
+  // ---- networking ----
+  async function apiGet(){
+    const res = await fetch(SHEET_URL + '?pin=' + encodeURIComponent(APP_PIN) + '&t=' + Date.now(), { method:'GET', cache:'no-store' });
+    const data = await res.json();
+    if(!data.ok) throw new Error(data.error || 'Sheet returned an error');
+    return data;
+  }
+  async function apiPost(payload){
+    const res = await fetch(SHEET_URL, {
+      method:'POST',
+      headers: { 'Content-Type':'text/plain;charset=utf-8' }, // avoids CORS preflight on Apps Script
+      body: JSON.stringify(Object.assign({ pin: APP_PIN }, payload))
+    });
+    const data = await res.json();
+    if(!data.ok){
+      const err = new Error(data.message || data.error || 'Sheet returned an error');
+      err.code = data.error;
+      throw err;
+    }
+    return data;
+  }
+
+  async function loadData(showToastOnFail){
+    if(!SHEET_URL){
+      setupBanner.classList.add('show');
+      setConnected(false, 'No sheet connected yet — see the setup note above.');
+      renderAll();
+      return;
+    }
+    try{
+      const data = await apiGet();
+      employees = data.employees || [];
+      entries = data.entries || [];
+      setConnected(true);
+      renderAll();
+    }catch(err){
+      setConnected(false);
+      if(showToastOnFail) showToast("Couldn't reach the sheet. The last loaded data is still shown.", 'var(--rust)');
+    }
+  }
+
+  function startPolling(){
+    if(pollTimer) clearInterval(pollTimer);
+    pollTimer = setInterval(() => { if(SHEET_URL && !isSubmitting) loadData(false); }, 20000);
+  }
+
+  // ---- manager unlock ----
+  const pinModal = $('pinModal'), pinInput = $('pinInput'), pinErr = $('pinErr');
+  let pinResolve = null;
+
+  function requireManager(){
+    if(managerPin && Date.now() < managerPinExpires) return Promise.resolve(managerPin);
+    return new Promise(resolve => {
+      pinResolve = resolve;
+      pinInput.value = '';
+      pinErr.textContent = '';
+      pinModal.classList.add('open');
+      setTimeout(() => pinInput.focus(), 50);
+    });
+  }
+  function closePin(result){
+    pinModal.classList.remove('open');
+    if(pinResolve){ const r = pinResolve; pinResolve = null; r(result); }
+  }
+  $('pinCancel').addEventListener('click', () => closePin(null));
+  async function submitPin(){
+    const val = pinInput.value.trim();
+    if(!val) return;
+    $('pinOk').disabled = true;
+    pinErr.textContent = '';
+    try{
+      await apiPost({ action:'checkManager', managerPin: val });
+      managerPin = val;
+      managerPinExpires = Date.now() + MANAGER_UNLOCK_MS;
+      closePin(val);
+    }catch(err){
+      pinErr.textContent = err.code === 'MANAGER_PIN' ? 'That PIN is not right.' : "Couldn't check the PIN — check the connection.";
+      pinInput.value = '';
+    }finally{
+      $('pinOk').disabled = false;
+    }
+  }
+  $('pinOk').addEventListener('click', submitPin);
+  pinInput.addEventListener('keydown', e => { if(e.key === 'Enter') submitPin(); });
+
+  async function managerPost(payload){
+    const pinVal = await requireManager();
+    if(!pinVal) return null; // cancelled
+    try{
+      return await apiPost(Object.assign({ managerPin: pinVal }, payload));
+    }catch(err){
+      if(err.code === 'MANAGER_PIN'){ managerPin = null; managerPinExpires = 0; }
+      throw err;
+    }
+  }
+
+  // ---- rendering ----
+  function renderAll(){
+    renderSelect(); renderOnShift(); renderChips(); renderTicket(); renderLog();
+    if(reportView.style.display !== 'none') renderReport();
+  }
+
+  function renderSelect(){
+    const current = selectedEmployee;
+    const depts = [];
+    employees.forEach(e => { const d = e.department || 'Other'; if(!depts.includes(d)) depts.push(d); });
+    let html = '<option value="">Choose your name…</option>';
+    const useGroups = depts.length > 1;
+    depts.forEach(dep => {
+      const people = employees.filter(e => (e.department || 'Other') === dep)
+        .sort((a,b) => a.name.localeCompare(b.name));
+      if(useGroups) html += `<optgroup label="${escapeHtml(dep)}">`;
+      people.forEach(p => {
+        const tag = openShiftFor(p.name) ? ' (on shift)' : '';
+        html += `<option value="${escapeHtml(p.name)}">${escapeHtml(p.name + tag)}</option>`;
+      });
+      if(useGroups) html += '</optgroup>';
+    });
+    empSelect.innerHTML = html;
+    if(current && employees.some(e => e.name === current)) empSelect.value = current;
+    else if(current){ selectedEmployee = ''; }
+    empSelect.disabled = employees.length === 0;
+    if(employees.length === 0) empSelect.innerHTML = '<option value="">No team members yet</option>';
+  }
+
+  function renderOnShift(){
+    const open = entries.filter(e => e.clockIn && !e.clockOut)
+      .sort((a,b) => a.clockIn.localeCompare(b.clockIn));
+    if(open.length === 0){
+      onShiftList.innerHTML = '<div class="emp-empty">Nobody is clocked in.</div>';
+      return;
+    }
+    onShiftList.innerHTML = '';
+    open.forEach(e => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'onshift-btn' + (selectedEmployee === e.employee ? ' selected' : '');
+      btn.innerHTML = `<span>${escapeHtml(e.employee)}</span><span class="onshift-since">since ${escapeHtml(fmtDayTime(new Date(e.clockIn)))}</span>`;
+      btn.addEventListener('click', () => selectEmployee(e.employee));
+      onShiftList.appendChild(btn);
+    });
+  }
+
+  function renderTicket(){
+    if(!selectedEmployee){
+      ticketName.textContent = 'No one selected';
+      ticketName.classList.add('placeholder');
+      ticketSub.textContent = 'Choose your name to clock in or out.';
+      onShiftBox.style.display = 'none';
+      punchBtn.className = 'punch-btn in';
+      punchBtn.textContent = 'Clock in';
+      punchBtn.disabled = true;
+      return;
+    }
+    ticketName.textContent = selectedEmployee;
+    ticketName.classList.remove('placeholder');
+    const shift = openShiftFor(selectedEmployee);
+    if(shift){
+      const start = new Date(shift.clockIn);
+      ticketSub.textContent = `On shift since ${fmtDayTime(start)}.`;
+      elapsedEl.textContent = fmtElapsed(Date.now() - start.getTime());
+      onShiftBox.style.display = '';
+      punchBtn.className = 'punch-btn out';
+      punchBtn.textContent = 'Clock out';
+    }else{
+      ticketSub.textContent = 'Not clocked in.';
+      onShiftBox.style.display = 'none';
+      punchBtn.className = 'punch-btn in';
+      punchBtn.textContent = 'Clock in';
+    }
+    punchBtn.disabled = !connected || isSubmitting;
+  }
+
+  function renderChips(){
+    empChips.innerHTML = '';
+    const depts = Array.from(new Set(employees.map(e => e.department).filter(Boolean))).sort((a,b)=>a.localeCompare(b));
+    deptList.innerHTML = depts.map(d => `<option value="${escapeHtml(d)}">`).join('');
+    employees.slice().sort((a,b)=>a.name.localeCompare(b.name)).forEach(emp => {
+      const chip = document.createElement('div');
+      chip.className = 'chip';
+      const deptLabel = emp.department ? ` <span class="chip-dept">(${escapeHtml(emp.department)})</span>` : '';
+      chip.innerHTML = `<span>${escapeHtml(emp.name)}${deptLabel}</span>`;
+      const rm = document.createElement('button');
+      rm.textContent = '\u00d7';
+      rm.type = 'button';
+      rm.setAttribute('aria-label', 'Remove ' + emp.name);
+      rm.disabled = !connected;
+      rm.addEventListener('click', async () => {
+        if(!confirm(`Remove ${emp.name} from the team list? Their past shifts stay in the sheet.`)) return;
+        rm.disabled = true;
+        try{
+          const r = await managerPost({ action:'deleteEmployee', name: emp.name });
+          if(r) await loadData(true);
+        }catch(err){
+          showToast("Couldn't remove that name: " + err.message, 'var(--rust)');
+        }finally{ rm.disabled = !connected; }
+      });
+      chip.appendChild(rm);
+      empChips.appendChild(chip);
+    });
+  }
+
+  function renderLog(){
+    if(entries.length === 0){
+      logWrap.innerHTML = '<div class="log-empty">No shifts yet. Choose a name above and clock in.</div>';
+      logTotals.textContent = '';
+      return;
+    }
+    const sorted = entries.slice().sort((a,b) => (b.clockIn||b.date).localeCompare(a.clockIn||a.date));
+    const visible = sorted.slice(0, 20);
+    const rows = visible.map(e => {
+      const inD = e.clockIn ? new Date(e.clockIn) : null;
+      const outD = e.clockOut ? new Date(e.clockOut) : null;
+      return `<tr>
+        <td>${escapeHtml(e.date)}</td>
+        <td>${escapeHtml(e.employee)}</td>
+        <td>${inD ? escapeHtml(fmtTime(inD)) : ''}</td>
+        <td>${outD ? escapeHtml(fmtDayTime(outD)) : '<span class="open-tag">On shift</span>'}</td>
+        <td class="num">${outD ? e.hours.toFixed(2) : ''}</td>
+        <td class="num">${outD ? money(e.tips) : ''}</td>
+        <td>
+          <button class="row-btn edit" data-id="${escapeHtml(e.id)}" type="button" ${connected ? '' : 'disabled'}>Edit</button>
+          <button class="row-btn del" data-id="${escapeHtml(e.id)}" type="button" ${connected ? '' : 'disabled'}>Remove</button>
+        </td>
+      </tr>`;
+    }).join('');
+    logWrap.innerHTML = `<div class="table-wrap"><table><thead><tr>
+        <th>Date</th><th>Employee</th><th>In</th><th>Out</th><th class="num">Hours</th><th class="num">Tips</th><th></th>
+      </tr></thead><tbody>${rows}</tbody></table></div>`;
+    logTotals.textContent = `Showing the latest ${visible.length} of ${entries.length} shifts. Editing or removing a shift needs the manager PIN.`;
+
+    logWrap.querySelectorAll('.row-btn.edit').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const entry = entries.find(e => e.id === btn.getAttribute('data-id'));
+        if(!entry) return;
+        const ok = await requireManager();
+        if(ok) openShiftEditor(entry);
+      });
+    });
+    logWrap.querySelectorAll('.row-btn.del').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const entry = entries.find(e => e.id === btn.getAttribute('data-id'));
+        if(!entry) return;
+        if(!confirm(`Remove ${entry.employee}'s shift on ${entry.date}? This can't be undone.`)) return;
+        btn.disabled = true;
+        try{
+          const r = await managerPost({ action:'deleteEntry', id: entry.id });
+          if(r){ showToast('Shift removed.', 'var(--teal)', 4000); await loadData(true); }
+        }catch(err){
+          showToast("Couldn't remove that shift: " + err.message, 'var(--rust)');
+        }finally{ btn.disabled = !connected; }
+      });
+    });
+  }
+
+  // ---- selecting a name + idle reset ----
+  let idleTimer = null;
+  function bumpIdle(){
+    if(idleTimer) clearTimeout(idleTimer);
+    if(selectedEmployee) idleTimer = setTimeout(clearSelection, IDLE_RESET_MS);
+  }
+  function selectEmployee(name){
+    selectedEmployee = name || '';
+    empSelect.value = selectedEmployee;
+    tipsInput.value = '';
+    toast.textContent = '';
+    renderOnShift();
+    renderTicket();
+    bumpIdle();
+  }
+  function clearSelection(){
+    selectedEmployee = '';
+    empSelect.value = '';
+    tipsInput.value = '';
+    renderOnShift();
+    renderTicket();
+  }
+  empSelect.addEventListener('change', () => selectEmployee(empSelect.value));
+  tipsInput.addEventListener('input', bumpIdle);
+  tipsInput.addEventListener('blur', () => {
+    if(tipsInput.value.trim() === '') return;
+    tipsInput.value = parseMoney(tipsInput.value).toFixed(2);
+  });
+
+  // ---- clock in / out ----
+  punchBtn.addEventListener('click', async () => {
+    if(isSubmitting || !selectedEmployee || !connected) return;
+    const name = selectedEmployee;
+    const shift = openShiftFor(name);
+    let payload, tips = 0;
+
+    if(shift){
+      tips = parseMoney(tipsInput.value);
+      const start = new Date(shift.clockIn);
+      const hrs = (Date.now() - start.getTime()) / 3600000;
+      if(hrs > LONG_SHIFT_HOURS){
+        const go = confirm(`${name} has been clocked in since ${fmtDayTime(start)} (${fmtElapsed(Date.now() - start.getTime())}). If you forgot to clock out earlier, clock out now and ask a manager to fix the time. Clock out?`);
+        if(!go) return;
+      }
+      if(tips > 1000){
+        if(!confirm(`Tips of ${money(tips)} for ${name}. Is that correct?`)) return;
+      }
+      payload = { action:'clockOut', employee:name, tips };
+    }else{
+      payload = { action:'clockIn', employee:name };
+    }
+
+    isSubmitting = true;
+    punchBtn.disabled = true;
+    showToast(shift ? 'Clocking out…' : 'Clocking in…');
+    let result;
+    try{
+      result = await apiPost(payload); // if this throws, nothing was recorded
+    }catch(err){
+      showToast(`Didn't save: ${err.message} Nothing was recorded — try again.`, 'var(--rust)');
+      isSubmitting = false;
+      await loadData(false);
+      return;
+    }
+    punchBtn.classList.add('pulse-success');
+    setTimeout(() => punchBtn.classList.remove('pulse-success'), 350);
+    const at = fmtTime(new Date());
+    if(shift){
+      showToast(`Clocked out: ${name} at ${at} — ${Number(result.hours || 0).toFixed(2)}h, ${money(result.tips)} tips.`, 'var(--teal)', 6000);
+    }else{
+      showToast(`Clocked in: ${name} at ${at}.`, 'var(--teal)', 6000);
+    }
+    isSubmitting = false;
+    clearSelection();
+    try{ await loadData(true); }
+    catch(e){ statusLine.textContent = 'Saved, but the screen failed to refresh — tap Refresh.'; }
+  });
+
+  // ---- shift editor (manager) ----
+  const shiftModal = $('shiftModal'), shiftTitle = $('shiftTitle'), shiftSub = $('shiftSub');
+  const shiftEmpField = $('shiftEmpField'), shiftEmp = $('shiftEmp');
+  const shiftIn = $('shiftIn'), shiftOut = $('shiftOut'), shiftTips = $('shiftTips');
+  const shiftErr = $('shiftErr'), shiftSave = $('shiftSave');
+  let editingId = null;
+
+  function openShiftEditor(entry){
+    shiftErr.textContent = '';
+    if(entry){
+      editingId = entry.id;
+      shiftTitle.textContent = 'Edit shift';
+      shiftSub.textContent = entry.employee;
+      shiftEmpField.style.display = 'none';
+      shiftIn.value = entry.clockIn ? toLocalInput(new Date(entry.clockIn)) : '';
+      shiftOut.value = entry.clockOut ? toLocalInput(new Date(entry.clockOut)) : '';
+      shiftTips.value = entry.clockOut ? Number(entry.tips || 0).toFixed(2) : '';
+    }else{
+      editingId = null;
+      shiftTitle.textContent = 'Add missed shift';
+      shiftSub.textContent = 'For someone who forgot to clock in.';
+      shiftEmpField.style.display = '';
+      shiftEmp.innerHTML = '<option value="">Choose a name…</option>' +
+        employees.slice().sort((a,b)=>a.name.localeCompare(b.name))
+          .map(e => `<option value="${escapeHtml(e.name)}">${escapeHtml(e.name)}</option>`).join('');
+      shiftIn.value = ''; shiftOut.value = ''; shiftTips.value = '';
+    }
+    shiftModal.classList.add('open');
+  }
+  $('shiftCancel').addEventListener('click', () => shiftModal.classList.remove('open'));
+
+  shiftSave.addEventListener('click', async () => {
+    shiftErr.textContent = '';
+    const inVal = shiftIn.value, outVal = shiftOut.value;
+    if(!editingId && !shiftEmp.value){ shiftErr.textContent = 'Choose who this shift is for.'; return; }
+    if(!inVal){ shiftErr.textContent = 'Enter a clock-in time.'; return; }
+    if(outVal && new Date(outVal) <= new Date(inVal)){ shiftErr.textContent = 'Clock out must be after clock in.'; return; }
+    if(outVal && (new Date(outVal) - new Date(inVal)) / 3600000 > 16){
+      if(!confirm('That shift is over 16 hours. Save it anyway?')) return;
+    }
+    const payload = editingId
+      ? { action:'editEntry', id: editingId, clockIn: inVal, clockOut: outVal, tips: parseMoney(shiftTips.value) }
+      : { action:'addShift', employee: shiftEmp.value, clockIn: inVal, clockOut: outVal, tips: parseMoney(shiftTips.value) };
+    shiftSave.disabled = true;
+    try{
+      const r = await managerPost(payload);
+      if(!r) return;
+      shiftModal.classList.remove('open');
+      showToast(editingId ? 'Shift updated.' : 'Shift added.', 'var(--teal)', 4000);
+      await loadData(true);
+    }catch(err){
+      shiftErr.textContent = err.message;
+    }finally{
+      shiftSave.disabled = false;
+    }
+  });
+
+  addShiftBtn.addEventListener('click', async () => {
+    if(!connected) return;
+    const ok = await requireManager();
+    if(ok) openShiftEditor(null);
+  });
+
+  // ---- team list (manager) ----
+  manageToggle.addEventListener('click', () => {
+    const open = manageBox.classList.toggle('open');
+    manageToggle.textContent = open ? '\u2212 Manage team list (manager)' : '+ Manage team list (manager)';
+  });
+  addEmpBtn.addEventListener('click', async () => {
+    const name = newEmpInput.value.trim();
+    const department = newDeptInput.value.trim();
+    if(!name || !connected) return;
+    addEmpBtn.disabled = true;
+    try{
+      const r = await managerPost({ action:'addEmployee', name, department });
+      if(r){
+        newEmpInput.value = ''; newDeptInput.value = '';
+        await loadData(true);
+      }
+    }catch(err){
+      showToast("Couldn't add that name: " + err.message, 'var(--rust)');
+    }finally{
+      addEmpBtn.disabled = !connected;
+    }
+  });
+  newEmpInput.addEventListener('keydown', e => { if(e.key === 'Enter') addEmpBtn.click(); });
+  newDeptInput.addEventListener('keydown', e => { if(e.key === 'Enter') addEmpBtn.click(); });
+
+  // ---- CSV ----
+  function csvField(v){ v = String(v); return /[",\n]/.test(v) ? `"${v.replace(/"/g,'""')}"` : v; }
+  function buildCsv(){
+    const lines = [['Date','Employee','Clock In','Clock Out','Hours','Tips'].join(',')];
+    entries.slice().sort((a,b) => (a.clockIn||a.date).localeCompare(b.clockIn||b.date)).forEach(e => {
+      const inD = e.clockIn ? new Date(e.clockIn) : null;
+      const outD = e.clockOut ? new Date(e.clockOut) : null;
+      lines.push([
+        e.date, csvField(e.employee),
+        inD ? `${fmtDate(inD)} ${pad(inD.getHours())}:${pad(inD.getMinutes())}` : '',
+        outD ? `${fmtDate(outD)} ${pad(outD.getHours())}:${pad(outD.getMinutes())}` : '',
+        outD ? e.hours.toFixed(2) : '',
+        outD ? Number(e.tips || 0).toFixed(2) : ''
+      ].join(','));
+    });
+    return lines.join('\r\n');
+  }
+  exportBtn.addEventListener('click', () => {
+    if(entries.length === 0){ showToast('No shifts to export yet.', 'var(--rust)'); return; }
+    const csv = buildCsv();
+    try{
+      const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = `time-clock-${fmtDate(new Date())}.csv`;
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 2000);
+    }catch(e){ /* fallback box below */ }
+    csvText.value = csv;
+    csvFallback.classList.add('open');
+  });
+
+  refreshBtn.addEventListener('click', () => loadData(true));
+  retryBtn.addEventListener('click', () => loadData(true));
+
+  // ---- pay period report (Sunday through Saturday) ----
+  function sundayOf(d){
+    const c = new Date(d);
+    c.setDate(c.getDate() - c.getDay());
+    c.setHours(0,0,0,0);
+    return c;
+  }
+  let weekStart = sundayOf(new Date());
+
+  function switchTab(tab){
+    const showReport = tab === 'report';
+    mainView.style.display = showReport ? 'none' : '';
+    reportView.style.display = showReport ? '' : 'none';
+    tabEntry.classList.toggle('active', !showReport);
+    tabReport.classList.toggle('active', showReport);
+    if(showReport) renderReport();
+  }
+  tabEntry.addEventListener('click', () => switchTab('entry'));
+  tabReport.addEventListener('click', () => switchTab('report'));
+  prevWeekBtn.addEventListener('click', () => { weekStart = new Date(weekStart); weekStart.setDate(weekStart.getDate() - 7); renderReport(); });
+  nextWeekBtn.addEventListener('click', () => { weekStart = new Date(weekStart); weekStart.setDate(weekStart.getDate() + 7); renderReport(); });
+
+  function renderReport(){
+    const days = [];
+    for(let i = 0; i < 7; i++){ const d = new Date(weekStart); d.setDate(d.getDate() + i); days.push(d); }
+    const dayKeys = days.map(fmtDate);
+    const weekEnd = days[6];
+    reportRange.textContent = `${fmtShort(weekStart)} – ${fmtShort(weekEnd)}, ${weekEnd.getFullYear()}`;
+
+    if(employees.length === 0){
+      reportWrap.innerHTML = '<div class="report-empty">No team members yet. Add them under "Manage team list".</div>';
+      return;
+    }
+
+    const deptByName = {};
+    employees.forEach(emp => { deptByName[emp.name] = emp.department || 'Unassigned'; });
+    const hoursBy = {}, tipsBy = {};
+    function ensure(name){
+      if(hoursBy[name]) return;
+      hoursBy[name] = {}; tipsBy[name] = {};
+      dayKeys.forEach(k => { hoursBy[name][k] = 0; tipsBy[name][k] = 0; });
+      if(!deptByName[name]) deptByName[name] = 'Unassigned';
+    }
+    employees.forEach(emp => ensure(emp.name));
+    entries.forEach(e => {
+      if(!e.clockOut || !dayKeys.includes(e.date)) return;
+      ensure(e.employee);
+      hoursBy[e.employee][e.date] += e.hours;
+      tipsBy[e.employee][e.date] += e.tips;
+    });
+
+    const allNames = Object.keys(hoursBy);
+    const deptOrder = [];
+    allNames.forEach(n => { if(!deptOrder.includes(deptByName[n])) deptOrder.push(deptByName[n]); });
+
+    const headCells = days.map(d => `<th>${d.toLocaleDateString(undefined,{weekday:'short'})}<br>${fmtShort(d)}</th>`).join('');
+
+    function table(source, fmt, totalLabel){
+      const dayTotals = dayKeys.map(() => 0);
+      let grand = 0, body = '';
+      deptOrder.forEach(dep => {
+        allNames.filter(n => deptByName[n] === dep).forEach((name, idx) => {
+          let sum = 0;
+          const cells = dayKeys.map((k, i) => {
+            const v = source[name][k];
+            sum += v; dayTotals[i] += v;
+            return `<td>${v ? fmt(v) : ''}</td>`;
+          }).join('');
+          grand += sum;
+          body += `<tr>
+            <td class="dept-col">${idx === 0 ? escapeHtml(dep) : ''}</td>
+            <td class="emp-col">${escapeHtml(name)}</td>${cells}
+            <td class="total-col">${fmt(sum)}</td>
+          </tr>`;
+        });
+      });
+      body += `<tr class="report-total-row">
+        <td class="dept-col"></td><td class="emp-col">Team total</td>
+        ${dayTotals.map(t => `<td>${t ? fmt(t) : ''}</td>`).join('')}
+        <td class="total-col">${fmt(grand)}</td>
+      </tr>`;
+      return `<div class="table-wrap"><table class="report-table">
+        <thead><tr><th class="dept-col">Department</th><th class="emp-col">Employee</th>${headCells}<th class="total-col">${totalLabel}</th></tr></thead>
+        <tbody>${body}</tbody></table></div>`;
+    }
+
+    reportWrap.innerHTML =
+      '<h3 class="report-section-title">Hours</h3>' + table(hoursBy, v => v.toFixed(2), 'Total hours') +
+      '<h3 class="report-section-title">Tips</h3>' + table(tipsBy, v => money(v), 'Total tips');
+  }
+
+  loadData(false);
+  startPolling();
+
+  document.addEventListener('visibilitychange', () => {
+    if(document.visibilityState === 'visible'){ tickClock(); loadData(false); }
+  });
+})();
+</script>
+</body>
+</html>
