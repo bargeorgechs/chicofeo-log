@@ -167,6 +167,26 @@
   .dept-opt.selected{ background:var(--ink); color:var(--paper); }
   .dept-opt:active{ transform:translateY(1px); }
 
+  .overlap-box{ border:1.5px dashed var(--line); border-radius:12px; padding:14px; margin:-6px 0 20px; }
+  .overlap-box .ov-title{ font-size:13px; font-weight:600; color:var(--ink-soft); }
+  .overlap-box .hint{ font-size:12px; color:var(--ink-soft); margin:2px 0 10px; }
+  .ov-row{ display:flex; gap:8px; align-items:center; margin-bottom:8px; }
+  .ov-row select{
+    flex:1; min-width:0; padding:10px 12px; font-size:16px; font-family:inherit; min-height:46px;
+    border:1.5px solid #8FB3CC; border-radius:10px; background:#E3EEF6; color:#1E3446;
+  }
+  .ov-amt{ display:flex; align-items:center; gap:4px; width:120px; border-bottom:2px solid var(--ink); }
+  .ov-amt span{ font-family:'IBM Plex Mono', monospace; font-weight:600; color:var(--ink-soft); }
+  .ov-amt input{
+    width:100%; min-width:0; border:none; background:transparent; padding:8px 0;
+    font-family:'IBM Plex Mono', monospace; font-size:18px; font-weight:600; color:var(--ink);
+  }
+  .ov-amt input:focus{ outline:none; }
+  .ov-amt:focus-within{ border-bottom-color:var(--mustard); }
+  .ov-remove{ background:none; border:none; color:var(--rust); font-size:22px; cursor:pointer; padding:4px 8px; min-height:44px; }
+  .ov-add{ background:none; border:none; color:var(--teal); font-family:inherit; font-size:14px; font-weight:600; cursor:pointer; padding:8px 0; }
+  .ov-empty{ font-size:13px; color:var(--ink-soft); }
+
   .punch-btn{
     width:100%; border:none; border-radius:12px; padding:20px; font-size:20px; font-weight:700;
     font-family:inherit; cursor:pointer; min-height:64px;
@@ -343,13 +363,19 @@
               <input id="tipsInput" inputmode="decimal" placeholder="0.00" autocomplete="off" />
             </div>
           </div>
+          <div class="overlap-box" id="overlapBox">
+            <div class="ov-title">AM/PM tip overlap</div>
+            <div class="hint">Enter only your own tips above. Add anything owed to someone who already clocked out today here.</div>
+            <div id="ovRows"></div>
+            <button class="ov-add" id="ovAdd" type="button">+ Add another</button>
+          </div>
         </div>
 
         <button class="punch-btn in" id="punchBtn" type="button" disabled>Clock in</button>
         <div class="toast" id="toast"></div>
       </div>
       <p class="status-line" id="statusLine"></p>
-      <p class="status-line">App version 6 (tips only for Manager/Bartender)</p>
+      <p class="status-line">App version 7 (AM/PM tip overlap)</p>
     </div>
   </div>
 
@@ -435,7 +461,7 @@
   // PASTE YOUR APPS SCRIPT WEB APP URL BETWEEN THE QUOTES BELOW.
   // See apps-script-code-time-clock.txt for how to get this URL.
   // ======================================================================
-  const SHEET_URL = "https://script.google.com/macros/s/AKfycbxB1Eth9B6sUigL1d-QEnlN8-LbH4og0nRXxCA8XkBm2zvmm3o7O_BKxgRoLzHCqNSZbw/exec";
+  const SHEET_URL = "https://script.google.com/macros/s/AKfycbyIRsIj_xel-Ma56y7XRCviTC4aieVLC-sOiyi1-EbkoLQA-VwaOT3chuvMm2-MoF2obw/exec";
   // This must exactly match APP_PIN in your Apps Script code.
   const APP_PIN = "0672";
   // Optional: shown at the top of the screen, e.g. "Time Clock — Bar George".
@@ -734,6 +760,7 @@
       elapsedEl.textContent = fmtElapsed(Date.now() - start.getTime());
       onShiftBox.style.display = '';
       $('tipsField').style.display = isTippedDept(dep) ? '' : 'none';
+      $('overlapBox').style.display = isTippedDept(dep) ? '' : 'none';
       deptPick.style.display = 'none';
       punchBtn.className = 'punch-btn out';
       punchBtn.textContent = 'Clock out';
@@ -853,6 +880,67 @@
     if(idleTimer) clearTimeout(idleTimer);
     if(selectedEmployee) idleTimer = setTimeout(clearSelection, IDLE_RESET_MS);
   }
+  // ---- AM/PM tip overlap ----
+  const ovRows = $('ovRows'), ovAdd = $('ovAdd');
+  let overlapNames = [];
+
+  // People who already finished a Manager/Bartender shift on the same day
+  // as this person's shift (the day it was clocked in).
+  function overlapCandidates(name){
+    const shift = openShiftFor(name);
+    if(!shift) return [];
+    const out = [];
+    entries.forEach(e => {
+      if(e.date === shift.date && e.clockOut && e.employee !== name &&
+         isTippedDept(shiftDeptOf(e)) && !out.includes(e.employee)) out.push(e.employee);
+    });
+    return out.sort((a,b) => a.localeCompare(b));
+  }
+  function addOverlapRow(){
+    const row = document.createElement('div');
+    row.className = 'ov-row';
+    row.innerHTML = `<select aria-label="Who gets this overlap"><option value="">Choose name…</option>${
+      overlapNames.map(n => `<option value="${escapeHtml(n)}">${escapeHtml(n)}</option>`).join('')}</select>
+      <div class="ov-amt"><span>$</span><input inputmode="decimal" placeholder="0.00" autocomplete="off" aria-label="Overlap amount" /></div>
+      <button class="ov-remove" type="button" aria-label="Remove this line">×</button>`;
+    const amt = row.querySelector('input');
+    amt.addEventListener('input', bumpIdle);
+    amt.addEventListener('blur', () => { if(amt.value.trim() !== '') amt.value = parseMoney(amt.value).toFixed(2); });
+    row.querySelector('select').addEventListener('change', bumpIdle);
+    row.querySelector('.ov-remove').addEventListener('click', () => {
+      row.remove();
+      if(!ovRows.querySelector('.ov-row')) addOverlapRow();
+    });
+    ovRows.appendChild(row);
+  }
+  function resetOverlap(name){
+    ovRows.innerHTML = '';
+    overlapNames = name ? overlapCandidates(name) : [];
+    if(overlapNames.length === 0){
+      ovRows.innerHTML = '<div class="ov-empty">No one else has clocked out from a bar or manager shift today.</div>';
+      ovAdd.style.display = 'none';
+      return;
+    }
+    ovAdd.style.display = '';
+    addOverlapRow();
+  }
+  ovAdd.addEventListener('click', () => { addOverlapRow(); bumpIdle(); });
+
+  // Returns { items, error }. Blank lines are ignored.
+  function readOverlap(){
+    const items = [];
+    for(const row of ovRows.querySelectorAll('.ov-row')){
+      const who = row.querySelector('select').value;
+      const raw = row.querySelector('input').value.trim();
+      const amount = parseMoney(raw);
+      if(!who && !raw) continue;
+      if(!who) return { error: 'Choose a name for each overlap amount, or clear that line.' };
+      if(!(amount > 0)) return { error: `Enter an overlap amount for ${who}, or remove that line.` };
+      items.push({ employee: who, amount });
+    }
+    return { items };
+  }
+
   function selectEmployee(name){
     selectedEmployee = name || '';
     selectedDept = homeDeptOf(selectedEmployee);
@@ -861,6 +949,7 @@
     toast.textContent = '';
     renderOnShift();
     renderTicket();
+    resetOverlap(selectedEmployee);
     bumpIdle();
   }
   function clearSelection(){
@@ -868,6 +957,7 @@
     selectedDept = '';
     empSelect.value = '';
     tipsInput.value = '';
+    resetOverlap('');
     renderOnShift();
     renderTicket();
   }
@@ -897,7 +987,17 @@
       if(tips > 1000){
         if(!confirm(`Tips of ${money(tips)} for ${name}. Is that correct?`)) return;
       }
-      payload = { action:'clockOut', employee:name, tips };
+      let overlap = [];
+      if(tipped){
+        const ov = readOverlap();
+        if(ov.error){ showToast(ov.error, 'var(--rust)'); return; }
+        overlap = ov.items;
+        if(overlap.length){
+          const list = overlap.map(o => `${o.employee} ${money(o.amount)}`).join(', ');
+          if(!confirm(`Your tips: ${money(tips)}\nAM/PM overlap: ${list}\n\nClock out and save these?`)) return;
+        }
+      }
+      payload = { action:'clockOut', employee:name, tips, overlap };
     }else{
       payload = { action:'clockIn', employee:name, department: selectedDept || homeDeptOf(name) };
     }
@@ -918,7 +1018,9 @@
     setTimeout(() => punchBtn.classList.remove('pulse-success'), 350);
     const at = fmtTime(new Date());
     if(shift){
-      const tipNote = isTippedDept(shiftDeptOf(shift)) ? ' Tips saved.' : '';
+      const n = payload.overlap ? payload.overlap.length : 0;
+      const tipNote = isTippedDept(shiftDeptOf(shift))
+        ? (n ? ` Tips saved, plus overlap for ${n} ${n === 1 ? 'person' : 'people'}.` : ' Tips saved.') : '';
       showToast(`Clocked out: ${name} at ${at} — ${Number(result.hours || 0).toFixed(2)}h.${tipNote}`, 'var(--teal)', 6000);
     }else{
       const dep = payload.department ? ` in ${payload.department}` : '';
